@@ -1,0 +1,75 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('Build') {
+            steps {
+                bat "mvn -Dmaven.test.failure.ignore-true clean package"
+            }
+        }
+        stage('Build Docker img') {
+            steps {
+                bat "docker build ."
+            }
+        }
+        stage('Test Analyse') {
+            steps {
+                echo "Analyse en cours"
+                bat "mvn checkstyle:checkstyle"
+                bat "mvn pmd:pmd"
+            }
+
+        }
+	    stage('Test Unit') {
+            steps {
+                echo "Test unitaires"
+                bat "mvn test"
+            }
+
+        }
+        
+        stage('Package') {
+            steps {
+                echo "Packagin application"
+                bat 'mvn package'
+            }
+        }
+        stage('Publish') {
+            steps {
+                echo "Publish..."
+                archiveArtifacts '/target/*.jar'
+
+            }
+        }
+        stage('Nexus stage') {
+            steps {
+                echo "Nexus ..."
+                nexusArtifactUploader artifacts: [
+                    [
+                        artifactId: 'SimpleAstronomyLib', 
+                        classifier: '', 
+                        file: 'target/SimpleAstronomyLib-0.3.0.jar', 
+                        type: 'jar'
+                    ]
+                ], 
+                credentialsId: 'nexus3', 
+                groupId: 'com.bradsbrain', 
+                nexusUrl: 'localhost:8081', 
+                nexusVersion: 'nexus3', 
+                protocol: 'http', 
+                repository: 'aptast-release', 
+                version: '0.3.0'
+            }
+        }
+    }
+    post {
+        success {
+            junit '**/target/surefire-reports/TEST-*.xml'
+
+			recordIssues enabledForFailure: true, tools: [mavenConsole(), java(), javaDoc()]
+            recordIssues enabledForFailure: true, tool: checkStyle()
+            recordIssues enabledForFailure: true, tool: cpd(pattern: '**/target/cpd.xml')
+            recordIssues enabledForFailure: true, tool: pmdParser(pattern: '**/target/pmd.xml')
+                }
+        }
+}
